@@ -1,0 +1,6 @@
+# config.yaml
+
+semilla: 42
+temperature: 0.5
+max_api_calls_per_minute: 60
+repo_path: './'
