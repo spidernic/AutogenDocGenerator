@@ -11,6 +11,10 @@ Description:
 - **Email**: spidernic@me.com / ncravino@mac.com
 - **LinkedIn**: [Nic Cravino](https://www.linkedin.com/in/nic-cravino)
 - **Date**: October 26, 2024
+- **UPDate**: November 10, 2024 - refactored agent creation
+Explanation of Changes:
+    Direct Initialization: The initialize_agents() function now directly initializes and returns the code_analyzer, documentation_assistant, and user_proxy agents without the need for a dedicated AgentManager class.
+    Agent Usage: In main(), the initialize_agents() function is called to set up the agents, which are then passed into the CodeAnalyzer and RepositoryProcessor classes as before.
 
 ## License: Apache License 2.0 (Open Source)
 This tool is licensed under the Apache License, Version 2.0. This is a permissive license that allows you to use, distribute, and modify the software, subject to certain conditions:
@@ -106,13 +110,34 @@ code_analysis_schema = {
     "type": "object",
     "properties": {
         "purpose": {"type": "string"},
-        "key_functions": {"type": "array", "items": {"type": "string"}},
-        "features": {"type": "array", "items": {"type": "string"}},
-        "libraries": {"type": "array", "items": {"type": "string"}},
-        "usage_examples": {"type": "array", "items": {"type": "string"}}
+        "key_functions": {
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}}
+            ]
+        },
+        "features": {
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}}
+            ]
+        },
+        "libraries": {
+            "oneOf": [
+                {"type": "object"},
+                {"type": "array", "items": {"type": "string"}}
+            ]
+        },
+        "usage_examples": {
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}}
+            ]
+        }
     },
     "required": ["purpose", "key_functions", "features", "libraries", "usage_examples"]
 }
+
 # Trying a better way to force strict JSON, I will run it with gpt-4o-mini later to see if mini can cut it.
 documentation_schema = {
     "type": "object",
@@ -140,49 +165,39 @@ llm_config = {
     "response_format": {'type': "json_object"},
 }
 
-# New attempt to manage the agents differrently, don't like it much, will revert tot he array if I get anoyed.
-class AgentManager:
+# Initialize agents directly
+def initialize_agents():
     """
-    Manages the initialization of AutoGen agents.
+    Initializes the agents required for code analysis and documentation.
     """
+    code_analyzer = AssistantAgent(
+        name="CodeAnalyzer",
+        system_message="You are an expert at analyzing code. You provide detailed analysis on code snippets, focusing on purpose, key functions, features, libraries used, and practical usage examples. Always respond in JSON with keys 'purpose', 'key_functions', 'features', 'libraries', and 'usage_examples'.",
+        llm_config=llm_config,
+        max_consecutive_auto_reply=6,
+        code_execution_config=False,
+    )
 
-    def __init__(self, llm_config):
-        self.llm_config = llm_config
-        self.code_analyzer = None
-        self.documentation_assistant = None
-        self.user_proxy = None
+    documentation_assistant = AssistantAgent(
+        name="DocumentationAssistant",
+        system_message="You are an expert in code analysis and documentation. Your task is to understand and document code from repositories. You provide comprehensive documentation including purpose, functionalities, architecture, notable features, and examples. Always respond in JSON with keys 'project_purpose', 'project_functionalities', 'project_architecture', 'project_notable_features', 'project_libraries', and 'project_examples'.",
+        llm_config=llm_config,
+        max_consecutive_auto_reply=6,
+        code_execution_config=False,
+    )
 
-    def initialize_agents(self):
-        """
-        Initializes the agents required for code analysis and documentation.
-        """
-        self.code_analyzer = AssistantAgent(
-            name="CodeAnalyzer",
-            system_message="You are an expert at analyzing code. You provide detailed analysis on code snippets, focusing on purpose, key functions, features, libraries used, and practical usage examples. Always respond in JSON with keys 'purpose', 'key_functions', 'features', 'libraries', and 'usage_examples'.",
-            llm_config=self.llm_config,
-            max_consecutive_auto_reply=6,
-            code_execution_config=False,
-        )
+    user_proxy = UserProxyAgent(
+        name="UserProxy",
+        human_input_mode="NEVER",
+        max_consecutive_auto_reply=0,
+        is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
+        code_execution_config=False,
+        llm_config=llm_config,
+        system_message="You read and process code from repositories. You only respond in JSON."
+    )
 
-        self.documentation_assistant = AssistantAgent(
-            name="DocumentationAssistant",
-            system_message="You are an expert in code analysis and documentation. Your task is to understand and document code from repositories. You provide comprehensive documentation including purpose, functionalities, architecture, notable features, and examples. Always respond in JSON with keys 'project_purpose', 'project_functionalities', 'project_architecture', 'project_notable_features', 'project_libraries', and 'project_examples'.",
-            llm_config=self.llm_config,
-            max_consecutive_auto_reply=6,
-            code_execution_config=False,
-        )
+    return code_analyzer, documentation_assistant, user_proxy
 
-        self.user_proxy = UserProxyAgent(
-            name="UserProxy",
-            human_input_mode="NEVER",
-            max_consecutive_auto_reply=0,
-            is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
-            code_execution_config=False,
-            llm_config=self.llm_config,
-            system_message="You read and process code from repositories. You only respond in JSON."
-        )
-
-        return self.code_analyzer, self.documentation_assistant, self.user_proxy
 
 class DependencyAnalyzer:
     """
@@ -193,8 +208,6 @@ class DependencyAnalyzer:
         self.repo_path = repo_path
         self.dependencies = {
             "Python": [],
-            "Node.js": [],
-            "Java": [],
             # Extend with more languages as needed
         }
 
@@ -209,10 +222,6 @@ class DependencyAnalyzer:
 
                     if file == "requirements.txt":
                         self.dependencies["Python"].extend(self.parse_requirements_txt(file_path))
-                    elif file == "package.json":
-                        self.dependencies["Node.js"].extend(self.parse_package_json(file_path))
-                    elif file == "pom.xml":
-                        self.dependencies["Java"].extend(self.parse_pom_xml(file_path))
                     # Extend with more languages and files
         except Exception as e:
             logging.error(f"Error while analyzing dependencies: {e}")
@@ -230,40 +239,6 @@ class DependencyAnalyzer:
                     dependencies.append(str(req))
         except Exception as e:
             logging.error(f"Error parsing requirements.txt: {e}")
-        return dependencies
-
-    def parse_package_json(self, file_path):
-        """
-        Parses a Node.js package.json file.
-        """
-        dependencies = []
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                package_data = json.load(f)
-                for dep_type in ["dependencies", "devDependencies"]:
-                    if dep_type in package_data:
-                        dependencies.extend([f"{key}: {value}" for key, value in package_data[dep_type].items()])
-        except Exception as e:
-            logging.error(f"Error parsing package.json: {e}")
-        return dependencies
-
-    def parse_pom_xml(self, file_path):
-        """
-        Parses a Java pom.xml file.
-        """
-        dependencies = []
-        try:
-            tree = ET.parse(file_path)
-            root = tree.getroot()
-            namespace = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
-            for dependency in root.findall(".//mvn:dependency", namespaces=namespace):
-                group_id = dependency.find("mvn:groupId", namespaces=namespace).text
-                artifact_id = dependency.find("mvn:artifactId", namespaces=namespace).text
-                version_elem = dependency.find("mvn:version", namespaces=namespace)
-                version = version_elem.text if version_elem is not None else 'No version specified'
-                dependencies.append(f"{group_id}:{artifact_id}:{version}")
-        except Exception as e:
-            logging.error(f"Error parsing pom.xml: {e}")
         return dependencies
 
 class CodeAnalyzer:
@@ -292,12 +267,29 @@ class CodeAnalyzer:
             result = self.user_proxy.initiate_chat(
                 self.analyzer_agent,
                 silent=False,
-                message=f'''
+                message = '''
 # Analyze this code:
 ```{file_content}```
 
 # Provide a comprehensive description of its purpose, key functions, notable features, libraries used, and usage examples.
-Format your answer in JSON with keys 'purpose', 'key_functions', 'features', 'libraries', and 'usage_examples'.'''
+Always respond in JSON with the following keys:
+{
+    "purpose": "string",
+    "key_functions": ["array of strings"],
+    "features": ["array of strings"],
+    "libraries": ["array of strings"],
+    "usage_examples": ["array of strings"]
+}
+Each item must be an individual string within an array. For example:
+{
+    "purpose": "To automate X process",
+    "key_functions": ["Function A does X", "Function B handles Y"],
+    "features": ["Feature 1", "Feature 2"],
+    "libraries": ["library1", "library2"],
+    "usage_examples": ["Example 1", "Example 2"]
+}
+'''
+
             )
 
             for message in reversed(result.chat_history):
@@ -305,43 +297,74 @@ Format your answer in JSON with keys 'purpose', 'key_functions', 'features', 'li
                     salida = self.safe_json_loads(message["content"])
                     if salida and self.validate_json_response(salida):
                         return salida
-                    else:
-                        # Re-prompt the assistant to correct the JSON format, experimental IRQ - I do not know if it can break a GroupChat ...testing
-                        logging.warning("Reprompting, I hope it works ...")
-                        correction_result = self.user_proxy.send_message(
-                            self.analyzer_agent,
-                            "Please correct your previous response to be valid JSON according to the schema."
-                        )
-                        # Check the corrected response
-                        for message in reversed(correction_result.chat_history):
-                            if message["name"] == self.analyzer_agent.name:
-                                salida = self.safe_json_loads(message["content"])
-                                if salida and self.validate_json_response(salida):
-                                    return salida
             return {"Error": "Analysis failed"}
         except Exception as e:
             logging.error(f"Unexpected error while analyzing file {file_path}: {e}")
             return {"Error": "Analysis failed"}
 
+    def ensure_list(self, value):
+        if isinstance(value, list):
+            return value
+        elif isinstance(value, str):
+            return [value]
+        else:
+            return []
+
+    # Modify `safe_json_loads` accordingly:
     def safe_json_loads(self, content):
         """
-        Safely loads JSON content.
+        Safely loads JSON content and ensures type conformance.
         """
         try:
-            return json.loads(content)
+            data = json.loads(content)
+            # Ensure all fields have the correct types
+            if 'key_functions' in data:
+                data['key_functions'] = self.ensure_list(data['key_functions'])
+            if 'features' in data:
+                data['features'] = self.ensure_list(data['features'])
+            if 'libraries' in data:
+                data['libraries'] = self.ensure_list(data['libraries'])
+            if 'usage_examples' in data:
+                data['usage_examples'] = self.ensure_list(data['usage_examples'])
+            if 'project_examples' in data:
+                data['project_examples'] = self.ensure_list_of_strings(data['project_examples'])
+            if 'project_libraries' in data and isinstance(data['project_libraries'], list):
+                # Convert list to dictionary with placeholder keys
+                data['project_libraries'] = {f"library_{i}": lib for i, lib in enumerate(data['project_libraries'])}
+            return data
         except json.JSONDecodeError:
             logging.error("JSON decode error in code analysis message")
             return None
 
+
+    def ensure_list_of_strings(self, value):
+        if isinstance(value, list):
+            return [self.convert_to_string(v) for v in value]
+        elif isinstance(value, str):
+            return [value]
+        else:
+            return []
+
+    def convert_to_string(self, value):
+        if isinstance(value, dict):
+            # Convert complex dict to a readable string representation
+            if 'description' in value and 'steps' in value:
+                return f"{value['description']}. Steps: {'; '.join(value['steps'])}"
+            return json.dumps(value, indent=2)
+        elif isinstance(value, list):
+            return ', '.join([str(v) for v in value])
+        else:
+            return str(value)
+
     def validate_json_response(self, response):
         """
-        Validates the JSON response against the schema.
+        Validates the JSON response against the schema and logs detailed issues.
         """
         try:
             validate(instance=response, schema=code_analysis_schema)
             return True
         except ValidationError as e:
-            logging.error(f"JSON validation error: {e}")
+            logging.error(f"JSON validation error for field '{e.path}': {e.message}")
             return False
 
 class RepositoryProcessor:
@@ -381,7 +404,6 @@ class RepositoryProcessor:
     def process_repository(self):
         """
         Main function to process the repository and generate documentation.
-        Note that I initilize the summary value-keys with blank/nill do the script respects ot fails on potential data-type errors. I know ...
         """
         temp_structure = self.repo_structure()
         self.summary = {
@@ -410,11 +432,11 @@ class RepositoryProcessor:
             if file.endswith(('.py', '.js', '.java', '.cpp', '.h', '.txt', '.yml', '.yaml', '.ini', '.sh', '.env', '.json', '.md'))
         ]
 
-        # Analyze files concurrently - I use futures, to lock a variable placeholder and wait.
+        # Analyze files concurrently
         logging.info("Starting concurrent analysis of code files...")
         self.summary["project_modules"] = self.analyze_files_concurrently(file_paths)
 
-        # Proceed to comprehensive documentation generation using Autogen group chat
+        # Proceed to comprehensive documentation generation
         groupchat = GroupChat(
             agents=[self.documentation_assistant, self.user_proxy],
             messages=[],
@@ -430,13 +452,13 @@ class RepositoryProcessor:
             code_execution_config=False,
             max_rounds=6,
             message=f'''
-# Here's the structure of the repository:
-{temp_structure}
+    # Here's the structure of the repository:
+    {temp_structure}
 
-# Here is a Summary of the repository:
-{json.dumps(self.summary, indent=2)}
+    # Here is a Summary of the repository:
+    {json.dumps(self.summary, indent=2)}
 
-# Please consolidate and provide comprehensive documentation including purpose, functionalities, architecture, notable features, libraries used, and usage examples. Format your answer in JSON with keys 'project_purpose', 'project_functionalities', 'project_architecture', 'project_notable_features', 'project_libraries', and 'project_examples'. TERMINATE when finished.'''
+    # Please consolidate and provide comprehensive documentation including purpose, functionalities, architecture, notable features, libraries used, and usage examples. Format your answer in JSON with keys 'project_purpose', 'project_functionalities', 'project_architecture', 'project_notable_features', 'project_libraries', and 'project_examples'. TERMINATE when finished.'''
         )
 
         for message in reversed(conclusion.chat_history):
@@ -447,11 +469,12 @@ class RepositoryProcessor:
                     break
                 else:
                     # Re-prompt the assistant to correct the JSON format
-                    correction_result = self.user_proxy.send_message(
+                    correction_result = self.user_proxy.initiate_chat(
                         self.documentation_assistant,
-                        "Please correct your previous response to be valid JSON according to the schema."
+                        silent=False,
+                        message="Please correct your previous response to be valid JSON according to the schema."
                     )
-                    # Check the corrected response
+
                     for message in reversed(correction_result.chat_history):
                         if message["name"] == self.documentation_assistant.name:
                             salida = self.safe_json_loads(message["content"])
@@ -460,6 +483,7 @@ class RepositoryProcessor:
                                 break
 
         self.save_summary()
+
 
     def analyze_files_concurrently(self, file_paths):
         """
@@ -493,6 +517,7 @@ class RepositoryProcessor:
     def validate_json_response(self, response):
         """
         Validates the JSON response against the documentation schema.
+        this is a placeholder for future validation, leave it as it is by now
         """
         try:
             validate(instance=response, schema=documentation_schema)
@@ -534,16 +559,19 @@ class RepositoryProcessor:
         else:
             return f"{' ' * indent}{data}\n\n"
 
+# Main function to execute the script
 def main():
     """
     Main function to execute the script.
     """
-    agent_manager = AgentManager(llm_config)
+    # Direct agent initialization
+    code_analyzer_agent, documentation_assistant, user_proxy = initialize_agents()
 
-    # Trying a new way to init agents, not the usual array, lets see how it goes. I do not like it much, but hey, lets try it.
-    code_analyzer_agent, documentation_assistant, user_proxy = agent_manager.initialize_agents()
+    # Create instances of classes with these agents
     code_analyzer = CodeAnalyzer(code_analyzer_agent, user_proxy)
     repository_processor = RepositoryProcessor(repo_path, code_analyzer, documentation_assistant, user_proxy)
+
+    # Process the repository
     repository_processor.process_repository()
 
 if __name__ == "__main__":
