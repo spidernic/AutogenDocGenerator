@@ -8,7 +8,7 @@ Description:
 
 ## Author Information
 - **Author**: Nic Cravino
-- **Email**: spidernic@me.com / ncravino@mac.com
+- **Email**: spidernic@me.com 
 - **LinkedIn**: [Nic Cravino](https://www.linkedin.com/in/nic-cravino)
 - **Date**: October 26, 2024
 - **UPDate**: November 10, 2024 - refactored agent creation
@@ -289,7 +289,6 @@ Each item must be an individual string within an array. For example:
     "usage_examples": ["Example 1", "Example 2"]
 }
 '''
-
             )
 
             for message in reversed(result.chat_history):

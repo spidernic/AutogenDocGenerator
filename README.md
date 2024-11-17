@@ -198,7 +198,17 @@ This project is licensed under the [Apache License 2.0](https://www.apache.org/l
 For any questions or support, please open an issue or contact: Nic Cravino **Email**: spidernic@me.com / ncravino@mac.com **LinkedIn**: [Nic Cravino](https://www.linkedin.com/in/nic-cravino)
 
 ---
+## Author Information
+- **Author**: Nic Cravino
+- **Email**: spidernic@me.com 
+- **LinkedIn**: [Nic Cravino](https://www.linkedin.com/in/nic-cravino)
+- **Date**: October 26, 2024
+- **UPDate**: November 10, 2024 - refactored agent creation
+Explanation of Changes:
+    Direct Initialization: The initialize_agents() function now directly initializes and returns the code_analyzer, documentation_assistant, and user_proxy agents without the need for a dedicated AgentManager class.
+    Agent Usage: In main(), the initialize_agents() function is called to set up the agents, which are then passed into the CodeAnalyzer and RepositoryProcessor classes as before.
 
+    
 ### Acknowledgments
 
 - **OpenAI**: For providing the powerful language models used in this project.
