@@ -1,6 +1,9 @@
-# config.yaml
+# Configuration for AutogenRepoDocumentationGenerator
 
-semilla: 42
+# OpenAI API settings
+seed: 42
 temperature: 0.5
 max_api_calls_per_minute: 60
-repo_path: './'
+
+# Repository settings
+repo_path: "tests"  # Path to the repository to analyze
