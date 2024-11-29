@@ -43,8 +43,8 @@ flowchart TD
     K[Code Analyzer] --> L[Documentation Assistant]
     end
     
-    G --> AI Agents
-    AI Agents --> H
+    G --> AI-Agents
+    AI-Agents --> H
 ```
 
 ## Component Interaction
